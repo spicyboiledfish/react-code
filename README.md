@@ -3,20 +3,29 @@ react源码
 
 ##### 参阅地址: https://react.jokcy.me/book/api/react-element.html
 
-#### 重要package:
-##### react, react-dom, event, scheduler, suspense, 
+- 
+  ### 写在前面:
+  ##### 1. 重要package:
+  
+  react, react-dom, event, scheduler, suspense, 
+  
+  ##### 2. Fiber
+  
+  Fiber从根本上解决了JS单线程运行如果计算量太大的话导致动画卡帧和交互卡顿的问题
+  
+  ##### 3. Babel JSX=>JS
+  
+  Babel会把JSX转化成React.createElement(). 其中第一个参数是字符串或者是大写的变量,第二个参数是由props传递的所有的属性的一个个键值对的对象, 第三个参数是子级.如子级有兄弟节点的话,也会依次转化成第四个,第五个参数,依次类推. 而第一个参数是否为字符串的关键点就在于标签时用大写还是小写.小写代表是原生的html标签(dom节点),大写是代表一个Component (function Component或者是Class Component)
+  
+  ##### 4. Reserved props 内嵌的props
+  
+  key, ref, __self, __source
+  
+  ##### 5. defaultProps
+  
+  判断依据是这个属性的值是否是undefined
 
-#### Fiber
-##### Fiber从根本上解决了JS单线程运行如果计算量太大的话导致动画卡帧和交互卡顿的问题
-
-#### Babel JSX=>JS
-##### Babel会把JSX转化成React.createElement(). 其中第一个参数是字符串或者是大写的变量,第二个参数是由props传递的所有的属性的一个个键值对的对象, 第三个参数是子级.如子级有兄弟节点的话,也会依次转化成第四个,第五个参数,依次类推. 而第一个参数是否为字符串的关键点就在于标签时用大写还是小写.小写代表是原生的html标签(dom节点),大写是代表一个Component (function Component或者是Class Component)
-
-#### Reserved props 内嵌的props
-##### key, ref, __self, __source
-
-#### defaultProps
-##### 判断依据是这个属性的值是否是undefined
+- ### ReactElement和CreateElement的实现过程
 
 ```javascript
 function createElement(type, config, children) {
@@ -108,7 +117,8 @@ const ReactElement = function(type, key, ref, self, source, owner, props) {
 };
 ```
 
-#### $$typeof 用来标识element是什么类型 REACT_ELEMENT_TYPE或其他
+$$typeof 用来标识element是什么类型 REACT_ELEMENT_TYPE或其他
 
-#### Component和PureComponent
+- ### Component和PureComponent
+
 
