@@ -165,3 +165,55 @@ pureComponentPrototype.isPureReactComponent = true;
 ```
 
 - ### React Ref
+
+  1. string ref
+
+  2. method ref
+
+  3. **obj ref** . 使用方法: React.createRef();
+
+     ```javascript
+     	export function createRef(): RefObject {
+        const refObject = {
+          current: null,
+        };
+        return refObject;
+      }
+     ```
+
+- ### ForwardRef
+
+   适用场景: 在函数组件中(PureComponent), props无法传递ref, 没有实例. 需要forwardRef
+
+   ```javascript
+       const Comp = React.forwardRef((props, ref) => {
+          return <input type="text" ref={ref} />
+       })
+   ```
+
+   
+
+    ```javascript
+   	 export function forwardRef<Props, ElementType: React$ElementType>(
+       render: (props: Props, ref: React$Ref<ElementType>) => React$Node,
+        ) {
+          const elementType = {
+            $$typeof: REACT_FORWARD_REF_TYPE,
+            render,
+          };
+          return elementType;
+        }
+    ```
+
+​      forwardRef返回的是一个对象,其中$$typeof是REACT_FORWARD_REF_TYPE. 但是组件的类型仍然是  $$typeof是REACT_ELEMENT_TYPE. 只是ReactElement的传值type变成了响应的forward类型.
+
+```javascript
+const element = {    
+  $$typeof: REACT_ELEMENT_TYPE,    //注意！！！   
+  type: {      
+    $$typeof: REACT_FORWARD_REF_TYPE,      
+    render,    
+  },  
+};
+```
+
