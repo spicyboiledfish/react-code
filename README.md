@@ -217,3 +217,20 @@ const element = {    
 };
 ```
 
+- ### Context
+
+  childContextType
+
+  createContext
+
+  ```javascript
+  const context: ReactContext<T> = {
+    $$typeof: REACT_CONTEXT_TYPE,
+    _calculateChangedBits: calculateChangedBits,
+    _currentValue: defaultValue,
+    _currentValue2: defaultValue,
+    _threadCount: 0,
+    Provider: (null: any),
+    Consumer: (null: any),
+  };
+  ```
