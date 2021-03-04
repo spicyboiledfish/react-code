@@ -219,9 +219,9 @@ const element = {    
 
 - ### Context
 
-  childContextType
+  childContextType(已废弃)
 
-  createContext
+  createContext, useContext
 
   ```javascript
   const context: ReactContext<T> = {
@@ -234,3 +234,14 @@ const element = {    
     Consumer: (null: any),
   };
   ```
+
+- ### ConcurrentMode
+
+  让react的整体渲染过程能够进行优先级的排比并且让整体渲染的过程是能够中断的,可以进行任务的调度,把更多的CPU性能调度给优先级较高的任务, 使得一些耗费大量计算的动画不会渲染的很卡顿.
+
+  <ConcurrentMode></ConcurrentMode>包裹的组件均为低优先级的. 而flushSync会强制执行高优先级的.
+
+- ### Suspense
+
+  1. Suspense包裹的所有组件, 会等待其中所有的promise异步任务均完成, 才会显示包裹的组件,否则展示fallback. 可以支持异步渲染数据
+  2. lazy支持异步渲染懒加载组件. 其实在编译的过程中配合webpack生成了一个chunk.js, 其实是code spliting生成出来的.
