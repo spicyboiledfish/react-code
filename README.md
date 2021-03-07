@@ -245,3 +245,205 @@ const element = {    
 
   1. Suspense包裹的所有组件, 会等待其中所有的promise异步任务均完成, 才会显示包裹的组件,否则展示fallback. 可以支持异步渲染数据
   2. lazy支持异步渲染懒加载组件. 其实在编译的过程中配合webpack生成了一个chunk.js, 其实是code spliting生成出来的.
+
+- ### Memo
+
+  1. 性能优化的点所在. 调用setState会触发组件的重新渲染,无论state是否变化; 父组件更新,子组件也会自动更新.
+  2. 在子组件不需要父组件的值和函数的情况下,只需要memo函数; 如果有函数传递给子组件,使用useCallback, 如果是有值传递给子组件使用useMemo.
+
+- ### Others
+
+  1. createFactory: 调用了createElement,并传入的type, 代表什么类型的标签
+  2. cloneElement: 其实是创建一个element, 最终是返回ReactElement
+
+- ### ReactDOM.render
+
+  1. 创建更新的三种方式:
+
+     ```javascript
+     a. ReactDOM.render || hydrate
+     b. setState
+     c. forceUpdate
+     ```
+
+  2. **legacyRenderSubtreeIntoContainer**(parentComponent, element, containerNode, forceHydrate, callback)
+
+  3. hydrate和render的区别就在于legacyRenderSubtreeIntoContainer的第四个参数forceHydrate是否为true. hydrate是用于服务端渲染的情况下,当客户端第一次渲染的dom节点可以复用的时候,那么可以直接提供给服务端进行渲染,这时候设置为true可以提高性能
+
+  4. createContainer主要是reactReconciler重点, 返回的是createFiberRoot
+
+     > const root = this._internalRoot; 调用的正是createContainer方法, 返回的是一个createFiberRoot. 
+
+     ```javascript
+  	  // 代表元素节点
+      export const ELEMENT_NODE = 1;
+      // 代表文本节点
+      export const TEXT_NODE = 3;
+      // 代表注释节点
+      export const COMMENT_NODE = 8;
+      // 代表整个文档，即document
+      export const DOCUMENT_NODE = 9;
+      // 代表文档片段节点
+      export const DOCUMENT_FRAGMENT_NODE = 11;    
+     ```
+
+     >根据节点的nodeType是否ElementType和rootElement.hasAttribute(ROOT_ATTRIBUTE_NAME) 其实就是这个属性'data-reactroot'.来判断是否是客户端渲染还是服务端渲染
+
+     ```javascript
+     export function createContainer(
+        containerInfo: Container,
+        tag: RootTag,
+        hydrate: boolean,
+        hydrationCallbacks: null | SuspenseHydrationCallbacks,
+        strictModeLevelOverride: null | number,
+      ): OpaqueRoot {
+        return createFiberRoot(
+          containerInfo,
+          tag,
+          hydrate,
+          hydrationCallbacks,
+          strictModeLevelOverride,
+        );
+      }
+     ```
+
+     创建了一个FiberRoot之后, 并在节点上执行updateQueue创建更新队列挂载在fiber.updateQueue下面. 再去根据优先级进行实际的任务的调度更新.
+
+- ### FiberRoot
+
+  是整个应用的起点, 包含应用挂载的的目标节点,记录整个应用更新过程的各种信息
+
+  ```javascript
+  function FiberRootNode(containerInfo, tag, hydrate) {
+    this.tag = tag;
+    this.containerInfo = containerInfo;
+    this.pendingChildren = null;
+    this.current = null;
+    this.pingCache = null;
+    this.finishedWork = null;
+    this.timeoutHandle = noTimeout;
+    this.context = null;
+    this.pendingContext = null;
+    this.hydrate = hydrate;
+    this.callbackNode = null;
+    this.callbackPriority = NoLanePriority;
+    this.eventTimes = createLaneMap(NoLanes);
+    this.expirationTimes = createLaneMap(NoTimestamp);
+
+    this.pendingLanes = NoLanes;
+    this.suspendedLanes = NoLanes;
+    this.pingedLanes = NoLanes;
+    this.expiredLanes = NoLanes;
+    this.mutableReadLanes = NoLanes;
+    this.finishedLanes = NoLanes;
+
+    this.entangledLanes = NoLanes;
+    this.entanglements = createLaneMap(NoLanes);
+
+    if (enableCache) {
+      this.pooledCache = null;
+      this.pooledCacheLanes = NoLanes;
+    }
+
+    if (supportsHydration) {
+      this.mutableSourceEagerHydrationData = null;
+    }
+
+    if (enableSchedulerTracing) {
+      this.interactionThreadID = unstable_getThreadID();
+      this.memoizedInteractions = new Set();
+      this.pendingInteractionMap = new Map();
+    }
+    if (enableSuspenseCallback) {
+      this.hydrationCallbacks = null;
+    }
+  }
+  ```
+
+- ### Fiber
+
+  1. 每一个ReactElement对应一个Fiber对象. 
+  2. 会记录节点的各种状态,包括state和props.对class Component来说每次更新都是挂载在Fiber对象上,并由Fiber去赋值给this. 这样Function Component实现思路也会因此而来,因为Function Component没有this.
+  3. 串联整个应用形成树结构: 遍历的过程是深度优先遍历
+  ```javascript
+  function FiberNode(
+    tag: WorkTag,
+    pendingProps: mixed,
+    key: null | string,
+    mode: TypeOfMode,
+  ) {
+    // Instance
+    this.tag = tag;
+    this.key = key;
+    this.elementType = null;
+    this.type = null;
+    this.stateNode = null;
+
+    // Fiber
+    this.return = null;  // return 是指向自己的父节点
+    this.child = null;   // 指向自己的第一个子节点
+    this.sibling = null;
+    this.index = 0;
+
+    this.ref = null;
+
+    this.pendingProps = pendingProps;
+    this.memoizedProps = null;  // 上一次的state
+    this.updateQueue = null;    // 新的state
+    this.memoizedState = null;
+    this.dependencies = null;
+
+    this.mode = mode;
+
+    // Effects
+    this.flags = NoFlags;
+    this.subtreeFlags = NoFlags;
+    this.deletions = null;
+
+    this.lanes = NoLanes;
+    this.childLanes = NoLanes;
+
+    this.alternate = null;
+
+    if (enableProfilerTimer) {
+      this.actualDuration = Number.NaN;
+      this.actualStartTime = Number.NaN;
+      this.selfBaseDuration = Number.NaN;
+      this.treeBaseDuration = Number.NaN;
+      this.actualDuration = 0;
+      this.actualStartTime = -1;
+      this.selfBaseDuration = 0;
+      this.treeBaseDuration = 0;
+    }
+}
+  ```
+  
+- ### update和UpdateQueue
+
+  update: 用于记录组件状态的改变, 存放于UpdateQueue中,多个update可以同时存在
+
+  ```javascript
+  const update: Update<*> = {
+    eventTime,
+    lane,
+
+    tag: UpdateState,  // 0|1|2|3
+    payload: null,
+    callback: null,
+
+    next: null,
+  };
+  
+  export const UpdateState = 0;
+  export const ReplaceState = 1;
+  export const ForceUpdate = 2;
+  export const CaptureUpdate = 3;
+  
+  export type UpdateQueue<State> = {
+    baseState: State,
+    firstBaseUpdate: Update<State> | null, // 单向链表的第一个update
+    lastBaseUpdate: Update<State> | null,  // 单向链表的最后一个update
+    shared: SharedQueue<State>,
+    effects: Array<Update<State>> | null,
+  };
+  ```
