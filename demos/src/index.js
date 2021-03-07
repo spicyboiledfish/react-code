@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import './index.css';
-import App from './demo/suspense/suspense';
+import App from './demo/children/index';
 import reportWebVitals from './reportWebVitals';
 
 ReactDOM.render(
