@@ -1,4 +1,5 @@
-# react-code
+react-code
+
 react源码
 
 ##### 参阅地址: https://react.jokcy.me/book/api/react-element.html
@@ -448,4 +449,56 @@ const element = {    
   };
   ```
   
+  执行setState,其实是执行了updater上的enqueueSetState方法:
   
+  1. 找到实例上的fiber
+  2. 计算得到当前fiber的优先级
+  3. 将要更新的fiber推送到更新队列
+  4. 根据fiber树上的优先级确定更新工作,从当前fiber的return为起点,开始递归,直到到达根节点,根节点的return为null.
+  
+- ### ExpirationTime如何计算的?
+
+  以computeAsyncExpiration举例. 
+
+  ```js
+  export const LOW_PRIORITY_EXPIRATION = 5000
+  export const LOW_PRIORITY_BATCH_SIZE = 250
+  ```
+
+  那么计算公式就是: (| 0 是取整的意思)
+
+  >((((currentTime - 2 + 5000 / 10) / 25) | 0) + 1) * 25
+  
+  expirationTime越小优先级越高, 
+  
+  1. Sync是代表同步,优先级最高, 不会被调度也不会被打断. 
+  
+  2. NoWork是0 代表没有更新. 
+  3. Async会计算过期时间(InteractiveExpiration是高优先级值更小, AysncExpiration是低优先级值更大). 当setState有回调函数时会走isBatchingInteractiveUpdates为true, 会走InteractiveExpiration高优先级执行
+  
+  **二进制位运算: & |** 
+  
+  创建更新的三种方式. 三种方式的执行过程大体相同:
+  
+  1. ReactDOM.render, 
+  
+  2. setState(enqueueSetState)
+  
+  3. forceUpdate(enqueueForceUpdate)
+  
+  ```javascript
+	enqueueSetState(inst, payload, callback) {
+	  const fiber = ReactInstanceMap.get(inst);
+    const currentTime = requestCurrentTime();
+    const expirationTime = computeExpirationForFiber(currentTime, fiber);
+  
+  const update = createUpdate(expirationTime);
+    update.payload = payload;
+    if (callback !== undefined && callback !== null) {
+      update.callback = callback;
+    }
+  
+  enqueueUpdate(fiber, update);
+    scheduleWork(fiber, expirationTime);
+  },
+  ```
