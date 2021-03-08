@@ -415,7 +415,7 @@ const element = {    
       this.selfBaseDuration = 0;
       this.treeBaseDuration = 0;
     }
-}
+   }
   ```
   
 - ### update和UpdateQueue
@@ -447,3 +447,5 @@ const element = {    
     effects: Array<Update<State>> | null,
   };
   ```
+  
+  
