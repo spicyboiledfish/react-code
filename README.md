@@ -502,3 +502,53 @@ const element = {    
     scheduleWork(fiber, expirationTime);
   },
   ```
+
+- ### ScheduleWork
+
+  ![schedule调度](./img/scheduler-fiber-scheduler.png)
+
+  
+  
+   举个简单的例子:
+  ![RootFiber](./img/rootFiber.png)
+  
+  点击Button, 去更新List下面的每个span. 其实setState发生在List上. 但是并不是把List节点加入到调度上.而是把这个组件的RootFiber节点加入到调度中
+  
+  
+  
+  以下这三点条件(&&且), 就会执行resetStack(). 打断当前的任务,执行更高优先级
+  
+  1. !isWorking: 没有正在进行渲染的任务
+  
+  2. nextRenderExpirationTime != noWork: 异步任务正在执行一半的时候没有执行完,要把执行权交给浏览器去执行优先级更高的任务
+  
+  3. expirationTime < nextRenderExpirationTime: 新的任务的优先级要高于目前做的任务
+
+
+
+  以下这三个条件(|| 或),就会执行requestWork().
+
+1. !isWorking: isWorking会包含isCommiting, 是render和commit阶段
+
+2. isCommiting: 正在提交,不可打断的一个阶段. 将Fiber整体渲染的状态出来, 渲染到dom的过程
+
+				3. nextRoot !== root: 上次筛选下拉就要进行更新的root. 单个应用下是都是相等的, 大部分情况下不考虑这个条件
+
+
+
+- ### requestWork
+
+  1. 将root加入到调度队列
+  2. 判断是否是批量更新
+  3. 根据expirationTime判断调度类型
+
+​		scheduleCallbackWithExpirationTime
+
+
+
+- ### batchedUpdates
+
+  React17.0.1版本之后的requestWork方法变了,好像是变成了scheduleUpdateOnFiber
+
+  setState是否是异步的? setState本身方法的调用是同步的,但是调用了setState并不标志着react的state会立马就更新了.这个更新是要根据我们当前的执行环境的上下文来判断的.如果处于批量更新的情况下,那么我的state不是当前立马更新的 .而如果我不处于这个批量更新的情况下, 那么就有可能是立马更新的. (concurrentMode异步渲染情况下也不是立马更新的)
+
