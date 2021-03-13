@@ -552,3 +552,126 @@ const element = {    
 
   setState是否是异步的? setState本身方法的调用是同步的,但是调用了setState并不标志着react的state会立马就更新了.这个更新是要根据我们当前的执行环境的上下文来判断的.如果处于批量更新的情况下,那么我的state不是当前立马更新的 .而如果我不处于这个批量更新的情况下, 那么就有可能是立马更新的. (concurrentMode异步渲染情况下也不是立马更新的)
 
+  
+
+- ### react scheduler
+
+  维护时间片,模拟requestIdleCallback, 调度列表和超时判断.
+
+  reactScheduler就是为了希望可以留给浏览器刷新动画或者响应用户输入的反馈的时候,每一帧有足够的时间. 不会被react渲染时间太长导致卡顿. 一秒钟至少得至少30帧以上.
+
+  ```javascript
+  if (expirationTime === Sync) {
+  	performSyncWork();
+  } else {
+  	scheduleCallbackWithExpirationTime(root, expirationTime);
+  }
+  ```
+  
+  unstable_scheduleCallback.
+  
+  要保证1s内至少有30帧.那么1帧就是33毫秒. 而这33毫秒中要有固定的浏览器渲染的时间,而剩下的就是react的执行时间.如果一个react时间片渲染不完,就会被打断,先把调度权给浏览器, 执行更高优先级的,而后等浏览器空闲的再接着根据优先级的顺序执行react渲染.
+  
+  如何模拟requestIdleCallback? 
+  ![requestIdleCallback](./img/requestIdleCallback.png)
+
+
+
+- ### performWork
+
+  是否有deadline的区分, 循环渲染Root的条件, 超过时间片的处理.
+
+  ```javascript
+  function performWork(minExpirationTime: ExpirationTime, dl: Deadline | null) {
+  deadline = dl;
+
+  findHighestPriorityRoot();
+
+  if (deadline !== null) {
+    recomputeCurrentRendererTime();
+    currentSchedulerTime = currentRendererTime;
+
+    if (enableUserTimingAPI) {
+      const didExpire = nextFlushedExpirationTime < currentRendererTime;
+      const timeout = expirationTimeToMs(nextFlushedExpirationTime);
+      stopRequestCallbackTimer(didExpire, timeout);
+    }
+
+    while (
+      nextFlushedRoot !== null &&
+      nextFlushedExpirationTime !== NoWork &&
+      (minExpirationTime === NoWork ||
+        minExpirationTime >= nextFlushedExpirationTime) &&
+      (!deadlineDidExpire || currentRendererTime >= nextFlushedExpirationTime)
+    ) {
+      performWorkOnRoot(
+        nextFlushedRoot,
+        nextFlushedExpirationTime,
+        currentRendererTime >= nextFlushedExpirationTime,
+      );
+      findHighestPriorityRoot();
+      recomputeCurrentRendererTime();
+      currentSchedulerTime = currentRendererTime;
+    }
+  } else {
+    while (
+      nextFlushedRoot !== null &&
+      nextFlushedExpirationTime !== NoWork &&
+      (minExpirationTime === NoWork ||
+        minExpirationTime >= nextFlushedExpirationTime)
+    ) {
+      performWorkOnRoot(nextFlushedRoot, nextFlushedExpirationTime, true);
+      findHighestPriorityRoot();
+    }
+  }
+
+  if (deadline !== null) {
+    callbackExpirationTime = NoWork;
+    callbackID = null;
+  }
+  if (nextFlushedExpirationTime !== NoWork) {
+    scheduleCallbackWithExpirationTime(
+      ((nextFlushedRoot: any): FiberRoot),
+      nextFlushedExpirationTime,
+    );
+  }
+
+  deadline = null;
+  deadlineDidExpire = false;
+
+  finishRendering();
+}
+  ```
+  
+- ### renderRoot
+
+  调用workloop进行循环单元更新, 捕获错误并进行处理, 走完流程之后进行善后
+
+  ![renderRoot](./img/scheduler-render-root.png)
+  
+  isYieldy: 是否可以被中断.只有Sync的任务或者已经超时的异步任务是不允许被中断的.
+  
+  currentTime: 在一次渲染中产生的更新需要使用相同的时间; 一次批处理的更新应该得到相同的时间; 挂起任务用于记录的时候应该相同
+  
+  ```javascript
+  function requestCurrentTime() {
+  if (isRendering) {
+    return currentSchedulerTime;
+  }
+  findHighestPriorityRoot();
+  if (
+    nextFlushedExpirationTime === NoWork ||
+    nextFlushedExpirationTime === Never
+  ) {
+    recomputeCurrentRendererTime();
+    currentSchedulerTime = currentRendererTime;
+    return currentSchedulerTime;
+  }
+  return currentSchedulerTime;
+}
+  ```
+  
+  如果是batchedUpdates情况下,这个if判断if (
+    nextFlushedExpirationTime === NoWork ||
+    nextFlushedExpirationTime === Never
+  ), 就避免了三次更新都需要重新计算requestCurrentTime的问题, 就不需要分批次进行更新.
