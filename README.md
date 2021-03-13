@@ -645,32 +645,33 @@ const element = {    
   
 - ### renderRoot
 
+
   调用workloop进行循环单元更新, 捕获错误并进行处理, 走完流程之后进行善后
 
   ![renderRoot](./img/scheduler-render-root.png)
-  
+
   isYieldy: 是否可以被中断.只有Sync的任务或者已经超时的异步任务是不允许被中断的.
-  
+
   currentTime: 在一次渲染中产生的更新需要使用相同的时间; 一次批处理的更新应该得到相同的时间; 挂起任务用于记录的时候应该相同
-  
+
   ```javascript
   function requestCurrentTime() {
-  if (isRendering) {
+    if (isRendering) {
+      return currentSchedulerTime;
+    }
+    findHighestPriorityRoot();
+    if (
+      nextFlushedExpirationTime === NoWork ||
+      nextFlushedExpirationTime === Never
+    ) {
+      recomputeCurrentRendererTime();
+      currentSchedulerTime = currentRendererTime;
+      return currentSchedulerTime;
+    }
     return currentSchedulerTime;
   }
-  findHighestPriorityRoot();
-  if (
-    nextFlushedExpirationTime === NoWork ||
-    nextFlushedExpirationTime === Never
-  ) {
-    recomputeCurrentRendererTime();
-    currentSchedulerTime = currentRendererTime;
-    return currentSchedulerTime;
-  }
-  return currentSchedulerTime;
-}
   ```
-  
+
   如果是batchedUpdates情况下,这个if判断if (
     nextFlushedExpirationTime === NoWork ||
     nextFlushedExpirationTime === Never
