@@ -775,12 +775,13 @@ const element = {    
       ......
      }
    }
-   ```
+  ```
 
-  	1. **通过判断current是否存在来区分是更新还是初始化过程.**
-       - 在调度更新中有两棵树,展示屏幕上的currentTree和正在后台基于current树构建的workInProgressTree. 两者是镜像的关系.如果是首次渲染,对具体的workInProgree节点来说,他是没有current节点的,如果在更新过程中,由于current节点已经在首次渲染时产生了,所以workInProgress节点有对应的current节点存在.
-       - 最终会根据节点是首次渲染还是更新来决定是创建fiber还是diff fiber. 只不过更新的时候,如果节点的优先级不够会直接复用已有节点,即bailoutOnAlreadyFinishedWork拦截无需更新的节点,而不是走下面的逻辑
-	2. **复用节点的过程**
-        - 节点可复用就表示无需更新. 若节点的优先级不满足要求，说明它不用更新，会调用`bailoutOnAlreadyFinishedWork`函数，去复用current节点作为新的workInProgress树的节点。
-        - 如果beginWork返回值是返回当前节点的子节点, 那么就会成为下一个工作单元继续beginWork; 如果返回null, 说明当前的fiber子树遍历结束, 从当前fiber节点开始往回completeWork了.
+1. **通过判断current是否存在来区分是更新还是初始化过程.**
+   - 在调度更新中有两棵树,展示屏幕上的currentTree和正在后台基于current树构建的workInProgressTree. 两者是镜像的关系.如果是首次渲染,对具体的workInProgree节点来说,他是没有current节点的,如果在更新过程中,由于current节点已经在首次渲染时产生了,所以workInProgress节点有对应的current节点存在.
+   - 最终会根据节点是首次渲染还是更新来决定是创建fiber还是diff fiber. 只不过更新的时候,如果节点的优先级不够会直接复用已有节点,即bailoutOnAlreadyFinishedWork拦截无需更新的节点,而不是走下面的逻辑
+
+2. **复用节点的过程**
+       - 节点可复用就表示无需更新. 若节点的优先级不满足要求，说明它不用更新，会调用`bailoutOnAlreadyFinishedWork`函数，去复用current节点作为新的workInProgress树的节点。
+       - 如果beginWork返回值是返回当前节点的子节点, 那么就会成为下一个工作单元继续beginWork; 如果返回null, 说明当前的fiber子树遍历结束, 从当前fiber节点开始往回completeWork了.
 
