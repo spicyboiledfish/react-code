@@ -785,3 +785,281 @@ const element = {    
     - 节点可复用就表示无需更新. 若节点的优先级不满足要求，说明它不用更新，会调用`bailoutOnAlreadyFinishedWork`函数，去复用current节点作为新的workInProgress树的节点。
     - 如果beginWork返回值是返回当前节点的子节点, 那么就会成为下一个工作单元继续beginWork; 如果返回null, 说明当前的fiber子树遍历结束, 从当前fiber节点开始往回completeWork了.
 
+
+
+- ### FunctionComponent更新
+
+  ```javascript
+  case FunctionComponent: {
+      const Component = workInProgress.type;
+      const unresolvedProps = workInProgress.pendingProps;
+      const resolvedProps =
+        workInProgress.elementType === Component
+          ? unresolvedProps
+          : resolveDefaultProps(Component, unresolvedProps);
+      return updateFunctionComponent(
+        current,
+        workInProgress,
+        Component,
+        resolvedProps,
+        renderLanes,
+      );
+    }
+  ```
+
+
+
+- ### reconcilerChildren调和子节点
+
+  根据props.children生成Fiber子树, 判断Fiber对象是否可以复用, 列表根据key优化.
+
+  ```javascript
+  const fiber = createFiberFromTypeAndProps(
+    type,
+    key,
+    pendingProps,
+    owner,
+    mode,
+    expirationTime,
+  );
+  function createFiberFromTypeAndProps(
+    type: any, // React$ElementType
+    key: null | string,
+    pendingProps: any,
+    owner: null | Fiber,
+    mode: TypeOfMode,
+    expirationTime: ExpirationTime,
+  ): Fiber {
+    let fiber;
+
+    let fiberTag = IndeterminateComponent;
+    let resolvedType = type;
+    if (typeof type === 'function') {
+      if (shouldConstruct(type)) {
+        fiberTag = ClassComponent;
+      }
+    } else if (typeof type === 'string') {
+      fiberTag = HostComponent;
+    } else {
+      getTag: switch (type) {
+        case REACT_FRAGMENT_TYPE:
+          return createFiberFromFragment(
+            pendingProps.children,
+            mode,
+            expirationTime,
+            key,
+          );
+        case REACT_CONCURRENT_MODE_TYPE:
+          return createFiberFromMode(
+            pendingProps,
+            mode | ConcurrentMode | StrictMode,
+            expirationTime,
+            key,
+          );
+        case REACT_STRICT_MODE_TYPE:
+          return createFiberFromMode(
+            pendingProps,
+            mode | StrictMode,
+            expirationTime,
+            key,
+          );
+        case REACT_PROFILER_TYPE:
+          return createFiberFromProfiler(pendingProps, mode, expirationTime, key);
+        case REACT_SUSPENSE_TYPE:
+          return createFiberFromSuspense(pendingProps, mode, expirationTime, key);
+        default: {
+          if (typeof type === 'object' && type !== null) {
+            switch (type.$$typeof) {
+              case REACT_PROVIDER_TYPE:
+                fiberTag = ContextProvider;
+                break getTag;
+              case REACT_CONTEXT_TYPE:
+                // This is a consumer
+                fiberTag = ContextConsumer;
+                break getTag;
+              case REACT_FORWARD_REF_TYPE:
+                fiberTag = ForwardRef;
+                break getTag;
+              case REACT_MEMO_TYPE:
+                fiberTag = MemoComponent;
+                break getTag;
+              case REACT_LAZY_TYPE:
+                fiberTag = LazyComponent;
+                resolvedType = null;
+                break getTag;
+            }
+          }
+          let info = '';
+          invariant(
+            false,
+            'Element type is invalid: expected a string (for built-in ' + 'components) or a class/function (for composite components) ' + 'but got: %s.%s', type == null ? type : typeof type, info,
+          );
+        }
+      }
+    }
+
+    fiber = createFiber(fiberTag, pendingProps, key, mode);
+    fiber.elementType = type;
+    fiber.type = resolvedType;
+    fiber.expirationTime = expirationTime;
+
+    return fiber;
+	}
+  ```
+  
+  创建Fiber的过程,需要给不同类型的Fider节点打上对应的FiberTag.
+  
+  deleteChild是讲这个子节点打上Deletion标签, 并没有实际删除.childToDelete.effectTag = Deletion. 最终删除节点是统一交给commit阶段.
+  
+  
+  
+- ### key和数组调和
+
+  key的作用,对比数组children是否可复用的过程, generator和Array的区别
+
+  reconcileChildrenArray/reconcileChildrenIterator.
+
+  ```javascript
+  function placeChild(
+    newFiber: Fiber,
+    lastPlacedIndex: number,
+    newIndex: number,
+  ): number {
+    newFiber.index = newIndex;
+    if (!shouldTrackSideEffects) {
+      // Noop.
+      return lastPlacedIndex;
+    }
+    const current = newFiber.alternate;
+    if (current !== null) {
+      const oldIndex = current.index;
+      if (oldIndex < lastPlacedIndex) {
+        // This is a move.
+        newFiber.effectTag = Placement;
+        return lastPlacedIndex;
+      } else {
+        // This item can stay in place.
+        return oldIndex;
+      }
+    } else {
+      // This is an insertion.
+      newFiber.effectTag = Placement;
+      return lastPlacedIndex;
+    }
+  }
+  ```
+
+  **对于Array,** 根据key判断如果数组中元素移动或者有插入新的元素, 则打上标签Placement.
+
+  
+
+  **Iterator迭代器**: 必须有next()方法,他每次返回一个{done: boolean, value: any}对象. 这里 `done:true` 表明迭代结束，否则 `value` 就是下一个要迭代的值。可迭代的对象是可以被for of循环遍历的, 除了Array, String, Set, Map, arguments, NodeList对象都是可迭代的.
+
+  手写一个迭代器: 希望let range = {from: 1, to: 5}. 打印出来, num为1, 2,3,4,5依次打印出来
+
+  ```javascript
+  	let range = {
+  		from: 1,
+  		to: 5
+  	};
+  	range[Symbol.iterator] = function() {
+  		return {
+  			current: this.from,
+  			last: this.to,
+  			next() {
+  				if (this.current <= this.last) {
+  					return { done: false, value: this.current++};
+  				} else {
+  					return { done: true }
+  				}
+  			}
+  		}
+  	}
+  	for (let num of range) {
+  		console.log(num);
+  	}
+  ```
+
+  不管是Array还是Iterator, 他都是会尽量多的去复用可复用的节点,来减少节点对象的声明和GC回收的成本.
+
+  在`beginWork`阶段，`updateHostComponent`的时候会执行`reconcileChildFibers`或者`mountChildFibers`(初始化的时候)，这两个方法其实是一样的，唯一不同是又一个全局变量不一样：`shouldTrackSideEffects`。reconcileChildFibers的时候是true, mountChildFibers的时候是false.
+  
+  **可以看到`key`的作用主要就是复用之前的节点的，没有`key`的话，数组就要每次全部删除然后重新创建，开销就非常大**
+
+
+
+- ### ClassComponent更新
+
+  const instance = new ctor(props, context)
+
+  三个新的生命周期方法:
+  
+	1. **getDerivedStateFromProps**: 新的生命周期方法, 代替了之前的componentWillReceiveProps.
+  
+  ```javascript
+    static getDerivedStateFromProps(nextProps, prevState) {
+        const {type} = nextProps;
+        // 当传入的type发生变化的时候，更新state
+        if (type !== prevState.type) {
+            return {
+                type,
+            };
+        }
+        // 否则，对于state不进行任何操作
+	      return null;
+    }
+  ```
+  
+  判断pureComponent的浅比较:
+  
+  ```javascript
+  if (ctor.prototype && ctor.prototype.isPureReactComponent) {
+    return (
+      !shallowEqual(oldProps, newProps) || !shallowEqual(oldState, newState)
+    );
+  }
+  
+  function shallowEqual(objA: mixed, objB: mixed): boolean {
+  if (is(objA, objB)) {
+      return true;
+    }
+  
+    if (
+      typeof objA !== 'object' ||
+      objA === null ||
+      typeof objB !== 'object' ||
+      objB === null
+  ) {
+      return false;
+    }
+
+    const keysA = Object.keys(objA);
+    const keysB = Object.keys(objB);
+  
+  if (keysA.length !== keysB.length) {
+      return false;
+    }
+  
+    // Test for A's keys different from B.
+    for (let i = 0; i < keysA.length; i++) {
+      if (
+        !hasOwnProperty.call(objB, keysA[i]) ||
+        !is(objA[keysA[i]], objB[keysA[i]])
+      ) {
+      return false;
+      }
+    }
+  
+    return true;
+  }  
+  ```
+  
+  coerceRef()规范ref, string ref, function ref, obj ref.
+  
+  2. **componentDidCatch(error, errorInfo) { }** =>新的生命周期方法. 声明式编码风格; 无论组件中的错误隐藏的多深，错误处理会将错误置于离它最近的异常上.
+  
+     链表在内存里不是连续的，动态分配，增删方便，轻量化
+  
+  3. **static getDerivedStateFromError(error){}**这个方法相比componentDidCatch更加实用一点.起到了创建错误边界组件的作用
+  
+  
