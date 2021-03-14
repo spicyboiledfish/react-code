@@ -640,7 +640,7 @@ const element = {    
   deadlineDidExpire = false;
 
   finishRendering();
-}
+  }
   ```
   
 - ### renderRoot
