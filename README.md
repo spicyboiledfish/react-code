@@ -782,6 +782,6 @@ const element = {    
    - 最终会根据节点是首次渲染还是更新来决定是创建fiber还是diff fiber. 只不过更新的时候,如果节点的优先级不够会直接复用已有节点,即bailoutOnAlreadyFinishedWork拦截无需更新的节点,而不是走下面的逻辑
 
 2. **复用节点的过程**
-       - 节点可复用就表示无需更新. 若节点的优先级不满足要求，说明它不用更新，会调用`bailoutOnAlreadyFinishedWork`函数，去复用current节点作为新的workInProgress树的节点。
-       - 如果beginWork返回值是返回当前节点的子节点, 那么就会成为下一个工作单元继续beginWork; 如果返回null, 说明当前的fiber子树遍历结束, 从当前fiber节点开始往回completeWork了.
+    - 节点可复用就表示无需更新. 若节点的优先级不满足要求，说明它不用更新，会调用`bailoutOnAlreadyFinishedWork`函数，去复用current节点作为新的workInProgress树的节点。
+    - 如果beginWork返回值是返回当前节点的子节点, 那么就会成为下一个工作单元继续beginWork; 如果返回null, 说明当前的fiber子树遍历结束, 从当前fiber节点开始往回completeWork了.
 
