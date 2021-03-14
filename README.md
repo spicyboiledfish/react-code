@@ -676,3 +676,111 @@ const element = {    
     nextFlushedExpirationTime === NoWork ||
     nextFlushedExpirationTime === Never
   ), 就避免了三次更新都需要重新计算requestCurrentTime的问题, 就不需要分批次进行更新.
+
+
+
+- ### 入口和优化beginWork
+
+  判断组件更新是否可以优化, 根据节点类型分发处理, 根据expirationTime等信息判断是否可以跳过.
+
+  beginWork(current: Fiber, workInProgress: Fiber, renderExpirationTime: ExpirationTime)
+
+  这里的current是传进来的第一个RootFiber, 他的tag就是HostRoot. FiberRoot的current就是RootFiber, RootFiber的stateNode是FiberRoot.
+
+  ![FiberTree](./img/fiberTree.png)
+  
+  beginWork是处理节点更新的入口, 会根据fiber节点的类型调用不同的处理函数.
+  
+  ```javascript
+  function beginWork(
+    current: Fiber | null,
+    workInProgress: Fiber,
+    renderLanes: Lanes
+  ): Fiber | null {
+  // 获取workInProgress.lanes，可通过判断它是否为空去判断该节点是否需要更新
+  const updateLanes = workInProgress.lanes;
+
+  // 依据current是否存在判断当前是首次挂载还是后续的更新
+  // 如果是更新，先看优先级够不够，不够的话就能调用bailoutOnAlreadyFinishedWork
+  // 复用fiber节点来跳出对当前这个节点的处理了。
+  if (current !== null) {
+    const oldProps = current.memoizedProps;
+    const newProps = workInProgress.pendingProps;
+    if (
+        oldProps !== newProps ||
+        hasLegacyContextChanged()
+    ) {
+      didReceiveUpdate = true;
+    } else if (!includesSomeLane(renderLanes, updateLanes)) {
+      // 此时无需更新
+      didReceiveUpdate = false;
+      switch (workInProgress.tag) {
+        case HostRoot:
+          ...
+        case HostComponent:
+          ...
+        case ClassComponent:
+          ...
+        case HostPortal:
+          ...
+      }
+
+      // 拦截无需更新的节点
+      return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+    }
+  } else {
+    didReceiveUpdate = false;
+  }
+
+  // 代码走到这里说明确实要去处理节点了，此时会根据不同fiber的类型
+  // 去调用它们各自的处理函数
+
+  // 先清空workInProgress节点上的lanes，因为更新过程中用不到，
+  // 在处理完updateQueue之后会重新赋值
+  workInProgress.lanes = NoLanes;
+
+  // 依据不同的节点类型来处理节点的更新
+  switch (workInProgress.tag) {
+    case IndeterminateComponent:
+      ...
+    case LazyComponent:
+      ...
+    case FunctionComponent:
+      ...
+      return updateFunctionComponent(
+          current,
+          workInProgress,
+          Component,
+          resolvedProps,
+          renderLanes,
+      );
+    }
+    case ClassComponent:
+      ...
+      return updateClassComponent(
+          current,
+          workInProgress,
+          Component,
+          resolvedProps,
+          renderLanes,
+      );
+    }
+    case HostRoot:
+      return updateHostRoot(current, workInProgress, renderLanes);
+    case HostComponent:
+      return updateHostComponent(current, workInProgress, renderLanes);
+    case HostText:
+      return updateHostText(current, workInProgress);
+
+      ......
+     }
+   }
+   ```
+
+  	1. **通过判断current是否存在来区分是更新还是初始化过程.**
+       - 在调度更新中有两棵树,展示屏幕上的currentTree和正在后台基于current树构建的workInProgressTree. 两者是镜像的关系.如果是首次渲染,对具体的workInProgree节点来说,他是没有current节点的,如果在更新过程中,由于current节点已经在首次渲染时产生了,所以workInProgress节点有对应的current节点存在.
+       - 最终会根据节点是首次渲染还是更新来决定是创建fiber还是diff fiber. 只不过更新的时候,如果节点的优先级不够会直接复用已有节点,即bailoutOnAlreadyFinishedWork拦截无需更新的节点,而不是走下面的逻辑
+	2. **复用节点的过程**
+        - 节点可复用就表示无需更新. 若节点的优先级不满足要求，说明它不用更新，会调用`bailoutOnAlreadyFinishedWork`函数，去复用current节点作为新的workInProgress树的节点。
+        - 如果beginWork返回值是返回当前节点的子节点, 那么就会成为下一个工作单元继续beginWork; 如果返回null, 说明当前的fiber子树遍历结束, 从当前fiber节点开始往回completeWork了.
+
