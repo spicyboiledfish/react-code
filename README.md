@@ -993,9 +993,9 @@ const element = {    
   const instance = new ctor(props, context)
 
   三个新的生命周期方法:
-  
-	1. **getDerivedStateFromProps**: 新的生命周期方法, 代替了之前的componentWillReceiveProps.
-  
+
+  1. **getDerivedStateFromProps**: 新的生命周期方法, 代替了之前的componentWillReceiveProps.
+
   ```javascript
     static getDerivedStateFromProps(nextProps, prevState) {
         const {type} = nextProps;
@@ -1006,12 +1006,12 @@ const element = {    
             };
         }
         // 否则，对于state不进行任何操作
-	      return null;
+        return null;
     }
   ```
-  
+
   判断pureComponent的浅比较:
-  
+
   ```javascript
   if (ctor.prototype && ctor.prototype.isPureReactComponent) {
     return (
@@ -1020,7 +1020,7 @@ const element = {    
   }
   
   function shallowEqual(objA: mixed, objB: mixed): boolean {
-  if (is(objA, objB)) {
+    if (is(objA, objB)) {
       return true;
     }
   
@@ -1029,14 +1029,14 @@ const element = {    
       objA === null ||
       typeof objB !== 'object' ||
       objB === null
-  ) {
+    ) {
       return false;
     }
-
+  
     const keysA = Object.keys(objA);
     const keysB = Object.keys(objB);
   
-  if (keysA.length !== keysB.length) {
+    if (keysA.length !== keysB.length) {
       return false;
     }
   
@@ -1046,20 +1046,326 @@ const element = {    
         !hasOwnProperty.call(objB, keysA[i]) ||
         !is(objA[keysA[i]], objB[keysA[i]])
       ) {
-      return false;
+        return false;
       }
     }
   
     return true;
   }  
   ```
-  
+
   coerceRef()规范ref, string ref, function ref, obj ref.
-  
+
   2. **componentDidCatch(error, errorInfo) { }** =>新的生命周期方法. 声明式编码风格; 无论组件中的错误隐藏的多深，错误处理会将错误置于离它最近的异常上.
-  
+
      链表在内存里不是连续的，动态分配，增删方便，轻量化
-  
+
   3. **static getDerivedStateFromError(error){}**这个方法相比componentDidCatch更加实用一点.起到了创建错误边界组件的作用
+
+  
+
+- ### indeterminateComponent
+
+  还没有指定类型的时候产生的组件. 在createFiberFromTypeAndProps函数中,并没有给FunctionComponent增加flagTag. 所以一开始functionComponent都会有个默认的标签叫做**IndeterminateComponent**.
+
+  注意: 如果一个functionComponent中的return中包含了一个render方法,那么他就会被认为是classComponent并且会执行里面的所有的生命周期的方法.
+
+  ```javascript
+  const functionCompo = () => {
+  	return {
+  		componentDidMount(){
+  			console.log('嘻嘻')
+  		},
+  		render(){
+  			return <span>Hello World~!</span>
+  		}
+  	}
+  }
+  // 这时候页面上会渲染出来Hello World~!并且控制台也会打印出来嘻嘻.
+  ```
+  
+  ```javascript
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof value.render === 'function' &&
+    value.$$typeof === undefined
+  ) {
+    workInProgress.tag = ClassComponent;
+    ...
+    return finishClassComponent(null,
+      workInProgress,
+      Component,
+      true,
+      hasContext,
+      renderExpirationTime)
+  } else {
+  	workInProgress.tag = FunctionComponent;
+  	reconcileChildren(null, workInProgress, value, renderExpirationTime);
+    return workInProgress.child;
+  }
+  ```
+
+- ### HostRoot
+
+  ReactDOM.render(<App />, document.getElementById('root')). 第一次渲染的时候这里的<App /> 就是element.
+
+  ```javascript
+  //update.payload = {element};
+  function scheduleRootUpdate(
+    current: Fiber,
+    element: ReactNodeList,
+    expirationTime: ExpirationTime,
+    callback: ?Function,
+    ) {
+      const update = createUpdate(expirationTime);
+      update.payload = {element};
+      ...
+  }
+      
+  //prevState.element
+  function updateHostRoot(current, workInProgress, renderExpirationTime) {
+    pushHostRootContext(workInProgress);
+    const updateQueue = workInProgress.updateQueue;
+    const nextProps = workInProgress.pendingProps;
+    const prevState = workInProgress.memoizedState;
+    const prevChildren = prevState !== null ? prevState.element : null;
+    processUpdateQueue(
+      workInProgress,
+      updateQueue,
+      nextProps,
+      null,
+      renderExpirationTime,
+    );
+    ...
+    if (
+      (current === null || current.child === null) &&
+      root.hydrate &&
+      enterHydrationState(workInProgress)
+    ) {
+      // 如果是第一次渲染,调用mountChildFibers
+      workInProgress.child = mountChildFibers(
+        workInProgress,
+        null,
+        nextChildren,
+        renderExpirationTime,
+      );
+    } else {
+      // 如果是更新,调用ReconcilerChildren
+      reconcileChildren(
+        current,
+        workInProgress,
+        nextChildren,
+        renderExpirationTime,
+      );
+    }
+    return workInProgress.child;
+  }
+  ```
   
   
+
+- ### HostComponent & HostText
+
+  HostComponent是原生的html标签的组件, 比如<p></p>, <div></div>, <span></span>等等; 而HostText是文本组件.
+
+- ### PortalComponent
+
+  ```javascript
+  //ReactPortal.js
+  export function createPortal(
+    children: ReactNodeList,
+    containerInfo: any,
+    implementation: any,
+    key: ?string = null,
+  ): ReactPortal {
+    return {
+      $$typeof: REACT_PORTAL_TYPE,
+      key: key == null ? null : '' + key,
+      children,
+      containerInfo,
+      implementation,
+    };
+  }
+  
+  //ReactDOM.js
+  function createPortal(
+    children: ReactNodeList,
+    container: DOMContainer,
+    key: ?string = null,
+  ) {
+    invariant(
+      isValidContainer(container),
+      'Target container is not a DOM element.',
+    );
+    // TODO: pass ReactDOM portal implementation as third argument
+    return ReactPortal.createPortal(children, container, null, key);
+  }
+  ```
+  
+  通过useFiber复用节点. React中的Portal类似于传送门.
+  
+  reconcileChildren方法是调和子节点. 当第一次渲染,current为null, 调用mountChildFibers, 否则就会调用reconcileChildFibers. 然后reconcileChildFibers会根据每个fiber节点的不同类型去调用不同的方法.
+  
+- ### ForwardRef的更新
+
+  ```javascript
+  function updateForwardRef(
+    current: Fiber | null,
+    workInProgress: Fiber,
+    type: any,
+    nextProps: any,
+    renderExpirationTime: ExpirationTime,
+  ) {
+    const render = type.render;
+    const ref = workInProgress.ref;
+    if (hasLegacyContextChanged()) {
+      // Normally we can bail out on props equality but if context has changed
+      // we don't do the bailout and we have to reuse existing props instead.
+    } else if (workInProgress.memoizedProps === nextProps) {
+      const currentRef = current !== null ? current.ref : null;
+      if (ref === currentRef) {
+        return bailoutOnAlreadyFinishedWork(
+          current,
+          workInProgress,
+          renderExpirationTime,
+        );
+      }
+    }
+
+    let nextChildren;
+    if (__DEV__) {
+      ReactCurrentOwner.current = workInProgress;
+      ReactCurrentFiber.setCurrentPhase('render');
+      nextChildren = render(nextProps, ref);
+      ReactCurrentFiber.setCurrentPhase(null);
+    } else {
+      nextChildren = render(nextProps, ref);
+    }
+
+    reconcileChildren(
+      current,
+      workInProgress,
+      nextChildren,
+      renderExpirationTime,
+    );
+    return workInProgress.child;
+  }
+  ```
+  
+  为何forwardRef((props, ref) => {}) 会有两个参数.原因在此: render(nextProps, ref);
+  
+- ### Mode组件
+
+  1. ConcurrentMode
+  2. StrictMode
+
+  在createFiberFromTypeAndProps方法中, 
+  ```javascript
+  case REACT_CONCURRENT_MODE_TYPE:
+    return createFiberFromMode(
+      pendingProps,
+      mode | ConcurrentMode | StrictMode,
+      expirationTime,
+      key,
+    );
+  case REACT_STRICT_MODE_TYPE:
+    return createFiberFromMode(
+      pendingProps,
+      mode | StrictMode,
+      expirationTime,
+      key,
+    );
+  export const NoContext = 0b000;
+  export const ConcurrentMode = 0b001;
+  export const StrictMode = 0b010;
+  export const ProfileMode = 0b100;
+  ```
+  
+  对于ConcurrentMode,mode就会| ConcurrentMode | StrictMode. 最终得到0b011. 以此为标志,来进行后面的判断, 在Fiber对象中去记录所有的子树的子节点所对应的渲染模式
+  
+- ### MemoComponent
+
+  ```javascript
+  export default function memo<Props>(
+    type: React$ElementType,//其实就是memo的第一次参数,FunctionComponent
+    compare?: (oldProps: Props, newProps: Props) => boolean,
+  ) {
+    return {
+      $$typeof: REACT_MEMO_TYPE,
+      type,
+      compare: compare === undefined ? null : compare,
+    };
+	}
+  // 这里的compare是用来比较props前后两次是否相等来决定是否更新,提高性能,类似于shouldUpdateComponent
+  ```
+  memo组件的更新,其实是使用了createFiberFromTypeAndProps来调和更新子节点,并没有使用reconcilerChildren. 因为我们传入的是memo的第一个参数FunctionComponent. 而reconcilerChildren是说要用memo包裹后的一个props更新, 意思是不对的.memo比较的是传入的FunctionComponent里面的props的比较
+  ```javascript
+  function updateMemoComponent(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  Component: any,
+  nextProps: any,
+  updateExpirationTime,
+  renderExpirationTime: ExpirationTime,
+  ): null | Fiber {
+  if (current === null) {
+  let type = Component.type;
+  if (isSimpleFunctionComponent(type) && Component.compare === null) {
+  // If this is a plain function component without default props,
+  // and with only the default shallow comparison, we upgrade it
+  // to a SimpleMemoComponent to allow fast path updates.
+  workInProgress.tag = SimpleMemoComponent;
+  workInProgress.type = type;
+  return updateSimpleMemoComponent(
+  current,
+  workInProgress,
+  type,
+  nextProps,
+  updateExpirationTime,
+  renderExpirationTime,
+  );
+  }
+  let child = createFiberFromTypeAndProps(
+    Component.type,
+    null,
+    nextProps,
+    null,
+    workInProgress.mode,
+    renderExpirationTime,
+  );
+    child.ref = workInProgress.ref;
+    child.return = workInProgress;
+    workInProgress.child = child;
+    return child;
+  }
+  let currentChild = ((current.child: any): Fiber); // This is always exactly one child
+  if (
+    updateExpirationTime === NoWork ||
+    updateExpirationTime > renderExpirationTime
+    ) {
+    // This will be the props with resolved defaultProps,
+    // unlike current.memoizedProps which will be the unresolved ones.
+    const prevProps = currentChild.memoizedProps;
+    // Default to shallow comparison
+    let compare = Component.compare;
+    compare = compare !== null ? compare : shallowEqual;
+    if (compare(prevProps, nextProps) && current.ref === workInProgress.ref) {
+    return bailoutOnAlreadyFinishedWork(
+    current,
+    workInProgress,
+    renderExpirationTime,
+    );
+  	}
+  }
+  let newChild = createWorkInProgress(
+    currentChild,
+    nextProps,
+    renderExpirationTime,
+  );
+    newChild.ref = workInProgress.ref;
+    newChild.return = workInProgress;
+    workInProgress.child = newChild;
+    return newChild;
+  }
+  ```
