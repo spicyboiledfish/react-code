@@ -1302,30 +1302,30 @@ const element = {    
   memo组件的更新,其实是使用了createFiberFromTypeAndProps来调和更新子节点,并没有使用reconcilerChildren. 因为我们传入的是memo的第一个参数FunctionComponent. 而reconcilerChildren是说要用memo包裹后的一个props更新, 意思是不对的.memo比较的是传入的FunctionComponent里面的props的比较
   ```javascript
   function updateMemoComponent(
-  current: Fiber | null,
-  workInProgress: Fiber,
-  Component: any,
-  nextProps: any,
-  updateExpirationTime,
-  renderExpirationTime: ExpirationTime,
-  ): null | Fiber {
-  if (current === null) {
-  let type = Component.type;
-  if (isSimpleFunctionComponent(type) && Component.compare === null) {
-  // If this is a plain function component without default props,
-  // and with only the default shallow comparison, we upgrade it
-  // to a SimpleMemoComponent to allow fast path updates.
-  workInProgress.tag = SimpleMemoComponent;
-  workInProgress.type = type;
-  return updateSimpleMemoComponent(
-  current,
-  workInProgress,
-  type,
-  nextProps,
-  updateExpirationTime,
-  renderExpirationTime,
-  );
-  }
+    current: Fiber | null,
+    workInProgress: Fiber,
+    Component: any,
+    nextProps: any,
+    updateExpirationTime,
+    renderExpirationTime: ExpirationTime,
+    ): null | Fiber {
+    if (current === null) {
+      let type = Component.type;
+      if (isSimpleFunctionComponent(type) && Component.compare === null)   {
+        // If this is a plain function component without default props,
+        // and with only the default shallow comparison, we upgrade it
+        // to a SimpleMemoComponent to allow fast path updates.
+        workInProgress.tag = SimpleMemoComponent;
+        workInProgress.type = type;
+        return updateSimpleMemoComponent(
+          current,
+          workInProgress,
+          type,
+          nextProps,
+          updateExpirationTime,
+          renderExpirationTime,
+        );
+    }
   let child = createFiberFromTypeAndProps(
     Component.type,
     null,
@@ -1351,21 +1351,33 @@ const element = {    
     let compare = Component.compare;
     compare = compare !== null ? compare : shallowEqual;
     if (compare(prevProps, nextProps) && current.ref === workInProgress.ref) {
-    return bailoutOnAlreadyFinishedWork(
-    current,
-    workInProgress,
-    renderExpirationTime,
+      return bailoutOnAlreadyFinishedWork(
+        current,
+        workInProgress,
+        renderExpirationTime,
+       );
+  	  }
+    }
+    let newChild = createWorkInProgress(
+      currentChild,
+      nextProps,
+      renderExpirationTime,
     );
-  	}
-  }
-  let newChild = createWorkInProgress(
-    currentChild,
-    nextProps,
-    renderExpirationTime,
-  );
     newChild.ref = workInProgress.ref;
     newChild.return = workInProgress;
     workInProgress.child = newChild;
     return newChild;
   }
   ```
+
+- ### completeUnitOfWork
+
+  1. 根据是否中断调用不同的处理方法: 若会throw一个错误,会标记一个effect后继续往下执行, 调用unwindWork
+  2. 判断是否有兄弟节点来执行不同的操作
+  3. 完成节点之后赋值effect链
+
+  从RootFiber节点开始beginWork, 深度优先遍历, next = beginWork(child). 如果发现该节点已经没有子节点了(或者是最后一个兄弟节点),就会走到completeUnitOfWork. 
+
+  老案例:点击button, 对List进行setState, 第二个儿子有更新,会加入到List的effect链, 此时是first和last都是第二个儿子,由于没有子节点遍历到兄弟,也就是第三个儿子,当effect>PerformWork, 那么就会将第二个儿子的next指向第三个儿子,第三个儿子作为last. 以此List上的effect链就是第二个儿子=>第三个儿子. 再继续return到上方的div, 一层一层向上,最终到达RootFiber. effect链就是第二个儿子=>第三个儿子. 渲染到DOM节点上就是这两个节点会变化
+
+  resetChildExpirationTime重置子节点优先级, 每次会拿到子节点已经子节点对应的子树的优先级,然后一层层遍历去找当前子节点中优先级最高的那个节点. 如果已经执行完毕会直接return.
