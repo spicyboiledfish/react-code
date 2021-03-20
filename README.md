@@ -1381,3 +1381,213 @@ const element = {    
   老案例:点击button, 对List进行setState, 第二个儿子有更新,会加入到List的effect链, 此时是first和last都是第二个儿子,由于没有子节点遍历到兄弟,也就是第三个儿子,当effect>PerformWork, 那么就会将第二个儿子的next指向第三个儿子,第三个儿子作为last. 以此List上的effect链就是第二个儿子=>第三个儿子. 再继续return到上方的div, 一层一层向上,最终到达RootFiber. effect链就是第二个儿子=>第三个儿子. 渲染到DOM节点上就是这两个节点会变化
 
   resetChildExpirationTime重置子节点优先级, 每次会拿到子节点已经子节点对应的子树的优先级,然后一层层遍历去找当前子节点中优先级最高的那个节点. 如果已经执行完毕会直接return.
+
+- ### completeWork
+
+  初次渲染中completeWork对于DOM节点的创建和appendAllChild算法.
+
+  diffProperties计算需要更新的内容, 不同的dom property处理方式不同.
+
+- ### Diff算法
+
+  更新DOM时进行的Diff判断: diffProperties.
+
+  ```javascript
+  export function diffProperties(
+    domElement: Element,
+    tag: string,
+    lastRawProps: Object,
+    nextRawProps: Object,
+    rootContainerElement: Element | Document,
+  ): null | Array<mixed> {
+
+    let updatePayload: null | Array<any> = null;
+
+    let lastProps: Object;
+    let nextProps: Object;
+    switch (tag) {
+      case 'input':
+        lastProps = ReactDOMInput.getHostProps(domElement, lastRawProps);
+        nextProps = ReactDOMInput.getHostProps(domElement, nextRawProps);
+        updatePayload = [];
+        break;
+      case 'option':
+        lastProps = ReactDOMOption.getHostProps(domElement, lastRawProps);
+        nextProps = ReactDOMOption.getHostProps(domElement, nextRawProps);
+        updatePayload = [];
+        break;
+      case 'select':
+        lastProps = ReactDOMSelect.getHostProps(domElement, lastRawProps);
+        nextProps = ReactDOMSelect.getHostProps(domElement, nextRawProps);
+        updatePayload = [];
+        break;
+      case 'textarea':
+        lastProps = ReactDOMTextarea.getHostProps(domElement, lastRawProps);
+        nextProps = ReactDOMTextarea.getHostProps(domElement, nextRawProps);
+        updatePayload = [];
+        break;
+      default:
+        lastProps = lastRawProps;
+        nextProps = nextRawProps;
+        if (
+          typeof lastProps.onClick !== 'function' &&
+          typeof nextProps.onClick === 'function'
+        ) {
+          trapClickOnNonInteractiveElement(((domElement: any): HTMLElement));
+        }
+        break;
+    }
+
+    assertValidProps(tag, nextProps);
+
+    let propKey;
+    let styleName;
+    let styleUpdates = null;
+    for (propKey in lastProps) {
+      if (
+        nextProps.hasOwnProperty(propKey) ||
+        !lastProps.hasOwnProperty(propKey) ||
+        lastProps[propKey] == null
+      ) {
+        continue;
+      }
+      if (propKey === STYLE) {
+        const lastStyle = lastProps[propKey];
+        for (styleName in lastStyle) {
+          if (lastStyle.hasOwnProperty(styleName)) {
+            if (!styleUpdates) {
+              styleUpdates = {};
+            }
+            styleUpdates[styleName] = '';
+          }
+        }
+      } else if (propKey === DANGEROUSLY_SET_INNER_HTML || propKey === CHILDREN) {
+      } else if (
+        propKey === SUPPRESS_CONTENT_EDITABLE_WARNING ||
+        propKey === SUPPRESS_HYDRATION_WARNING
+      ) {
+      } else if (propKey === AUTOFOCUS) {
+      } else if (registrationNameModules.hasOwnProperty(propKey)) {
+        if (!updatePayload) {
+          updatePayload = [];
+        }
+      } else {
+        (updatePayload = updatePayload || []).push(propKey, null);
+      }
+    }
+    for (propKey in nextProps) {
+      const nextProp = nextProps[propKey];
+      const lastProp = lastProps != null ? lastProps[propKey] : undefined;
+      if (
+        !nextProps.hasOwnProperty(propKey) ||
+        nextProp === lastProp ||
+        (nextProp == null && lastProp == null)
+      ) {
+        continue;
+      }
+      if (propKey === STYLE) {
+        if (lastProp) {
+          for (styleName in lastProp) {
+            if (
+              lastProp.hasOwnProperty(styleName) &&
+              (!nextProp || !nextProp.hasOwnProperty(styleName))
+            ) {
+              if (!styleUpdates) {
+                styleUpdates = {};
+              }
+              styleUpdates[styleName] = '';
+            }
+          }
+          for (styleName in nextProp) {
+            if (
+              nextProp.hasOwnProperty(styleName) &&
+              lastProp[styleName] !== nextProp[styleName]
+            ) {
+              if (!styleUpdates) {
+                styleUpdates = {};
+              }
+              styleUpdates[styleName] = nextProp[styleName];
+            }
+          }
+        } else {
+          if (!styleUpdates) {
+            if (!updatePayload) {
+              updatePayload = [];
+            }
+            updatePayload.push(propKey, styleUpdates);
+          }
+          styleUpdates = nextProp;
+        }
+      } else if (propKey === DANGEROUSLY_SET_INNER_HTML) {
+        const nextHtml = nextProp ? nextProp[HTML] : undefined;
+        const lastHtml = lastProp ? lastProp[HTML] : undefined;
+        if (nextHtml != null) {
+          if (lastHtml !== nextHtml) {
+            (updatePayload = updatePayload || []).push(propKey, '' + nextHtml);
+          }
+        } else {
+        }
+      } else if (propKey === CHILDREN) {
+        if (
+          lastProp !== nextProp &&
+          (typeof nextProp === 'string' || typeof nextProp === 'number')
+        ) {
+          (updatePayload = updatePayload || []).push(propKey, '' + nextProp);
+        }
+      } else if (
+        propKey === SUPPRESS_CONTENT_EDITABLE_WARNING ||
+        propKey === SUPPRESS_HYDRATION_WARNING
+      ) {
+      } else if (registrationNameModules.hasOwnProperty(propKey)) {
+        if (nextProp != null) {
+          if (__DEV__ && typeof nextProp !== 'function') {
+            warnForInvalidEventListener(propKey, nextProp);
+          }
+          ensureListeningTo(rootContainerElement, propKey);
+        }
+        if (!updatePayload && lastProp !== nextProp) {
+          updatePayload = [];
+        }
+      } else {
+        (updatePayload = updatePayload || []).push(propKey, nextProp);
+      }
+    }
+    if (styleUpdates) {
+      (updatePayload = updatePayload || []).push(STYLE, styleUpdates);
+    }
+    return updatePayload;
+  }
+  ```
+  
+  对于textarea, input, option, select这几种类型, 都会被标记markUpdate.
+  
+  主要包含三个类型:tree diff, component diff, element diff
+  
+  effectTag: 0  NoWork(无), 2 Placement(插入),  4 Update(更新), 8 Deletion(删除), 64 DidCapture(错误).
+  
+  小案例demo: list列表ABCDE 变成AFBCD, 且key都是对应的a, b , c, d, e.
+  
+  
+  - 维护一个 `lastPlacedIndex` 和 `newIndex`.
+  
+  - `lastPlacedIndex = 0`， newIndex为按顺序第一个与 old 节点 key 或者 type 不同的节点.
+  
+  - 依次遍历新节点。取出旧节点对应的oldIndex(如果旧节点中存在)， `oldIndex < lastPlacedIndex`，则`newFiber.effectTag = Placement`，且lastPlacedIndex不变；否则，节点位置保持不变，将`lastPlacedIndex = oldIndex`.
+  
+  因此，节点渲染的顺序为: ABCD保持不动, 删除 E 节点, 将 F 节点添加到 B 之前
+  
+  - diff 算法将 O(n3) 复杂度的问题转换成 O(n)
+  - key 的作用是为了尽可能的复用节点
+  - 虚拟DOM的优势并不在于它操作DOM比较快，而是能够通过虚拟DOM的比较，最小化真实DOM操作
+  - 尽量保持稳定的DOM结构，并且减少将最后的节点移动到首部的操作，能够优化渲染性能。
+  
+- ### renderRoot的错误处理:
+
+  给报错的节点增加InComplete副作用, 给父链上具有error boundary的节点增加副作用, 创建错误相关的更新.
+
+  unwindWork以及React中的错误处理: 类似于completeWork对不同类型组件进行处理, 对于shouldCapture组件设置DidCapture副作用.
+
+  HostEffectMask 是包含DidCapture, 而Incomplete, ShouldCapture是没有包含在里面的
+
+
+  ​	
